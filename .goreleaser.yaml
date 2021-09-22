@@ -1,0 +1,38 @@
+env:
+  - GO111MODULE=on
+builds:
+  - id: inventory-linux-amd64
+    binary: inventory
+    main: ./
+    goarch:
+      - amd64
+    goos:
+      - linux
+    flags:
+      - -trimpath
+      - -mod=readonly
+archives:
+  - id: inventory
+    builds:
+      - inventory-linux-amd64
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    wrap_in_directory: true
+    format: zip
+
+dockers:
+  - ids:
+      - inventory-linux-amd64
+    dockerfile: Dockefile
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - 'ghcr.io/ovrclk/k8s_inventory_operator:latest'
+      - 'ghcr.io/ovrclk/k8s_inventory_operator:{{ .ShortCommit }}'
+      - 'ghcr.io/ovrclk/k8s_inventory_operator:{{ .Version }}'
+
+release:
+  github:
+    owner: ovrclk
+    name: k8s_inventory_operator
+  prerelease: auto
+  draft: false
