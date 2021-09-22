@@ -2,11 +2,23 @@
 
 Monitor K8S resources and report them via REST API
 
-## Resources
-- StorageClasses
-  - Rook+Ceph
+## Resources monitored
+| Resource type | Status |
+|---|:---:|
+|StorageClass|✅|
+|Nodes|**TBD**|
 
-Provider can talk with service endpoint 
+### StorageClass
+Reported metrics
+- Allocatable - total allocatable in bytes for given storage class
+- Allocated - total in use in bytes for given storage class
+
+#### Supported provisioners
+| Provisioner | Status |
+|---|:---:|
+|Rook+Ceph|✅|
+
+Provider talks with service endpoint via K8S API
 ```go
 // discover inventory operator
 svcResult, err := c.kc.CoreV1().Services("").List(ctx, metav1.ListOptions{
