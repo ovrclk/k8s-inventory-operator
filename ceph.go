@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	akashv1 "github.com/ovrclk/akash/pkg/apis/akash.network/v1"
@@ -56,8 +57,9 @@ type dfResp struct {
 type cephClusters map[string]string
 
 type cephStorageClass struct {
-	pool      string
-	clusterID string
+	isAkashManaged bool
+	pool           string
+	clusterID      string
 }
 
 type cephStorageClasses map[string]cephStorageClass
@@ -185,7 +187,14 @@ func (c *ceph) run() error {
 					case watch.Added:
 						fallthrough
 					case watch.Modified:
+						lblVal := obj.Labels["akash.network"]
+						if lblVal == "" {
+							lblVal = "false"
+						}
+
 						sc := cephStorageClass{}
+
+						sc.isAkashManaged, _ = strconv.ParseBool(lblVal)
 
 						var exists bool
 						if sc.pool, exists = obj.Parameters["pool"]; !exists {
@@ -268,14 +277,14 @@ func (c *ceph) scrapeMetrics(scs cephStorageClasses, clusters map[string]string)
 
 	for class, params := range scs {
 		df, exists := dfResults[params.clusterID]
-		if !exists {
+		if !exists || !params.isAkashManaged {
 			continue
 		}
 
 		for _, pool := range df.Pools {
 			if pool.Name == params.pool {
 				res = append(res, akashv1.InventoryClusterStorage{
-					Class:     class,
+					Class: class,
 					ResourcePair: akashv1.ResourcePair{
 						Allocated:   pool.Stats.BytesUsed,
 						Allocatable: pool.Stats.MaxAvail,

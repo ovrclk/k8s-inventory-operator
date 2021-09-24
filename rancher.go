@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strconv"
 	"strings"
 
 	akashv1 "github.com/ovrclk/akash/pkg/apis/akash.network/v1"
@@ -23,8 +24,9 @@ type rancher struct {
 }
 
 type rancherStorage struct {
-	isRancher bool
-	allocated uint64
+	isRancher      bool
+	isAkashManaged bool
+	allocated      uint64
 }
 type rancherStorageClasses map[string]*rancherStorage
 
@@ -88,7 +90,7 @@ func (c *rancher) run() error {
 		case <-c.ctx.Done():
 			return c.ctx.Err()
 		case rawEvt := <-events:
-			if scSynced && len(pendingPVs) > 0{
+			if scSynced && len(pendingPVs) > 0 {
 				select {
 				case events <- pendingPVs[0]:
 					pendingPVs = pendingPVs[1:]
@@ -114,11 +116,21 @@ func (c *rancher) run() error {
 					case watch.Added:
 						fallthrough
 					case watch.Modified:
-						if _, exists := scs[obj.Name]; !exists {
-							scs[obj.Name] = &rancherStorage{
+						lblVal := obj.Labels["akash.network"]
+						if lblVal == "" {
+							lblVal = "false"
+						}
+
+						sc, exists := scs[obj.Name]
+
+						if !exists {
+							sc = &rancherStorage{
 								isRancher: obj.Provisioner == "rancher.io/local-path",
 							}
 						}
+
+						sc.isAkashManaged, _ = strconv.ParseBool(lblVal)
+						scs[obj.Name] = sc
 
 						scList, _ := KubeClientFromCtx(c.ctx).StorageV1().StorageClasses().List(c.ctx, metav1.ListOptions{})
 						if len(scList.Items) == len(scs) && !scSynced {
@@ -191,7 +203,7 @@ func (c *rancher) run() error {
 				var res []akashv1.InventoryClusterStorage
 
 				for class, params := range scs {
-					if params.isRancher {
+					if params.isRancher && params.isAkashManaged {
 						res = append(res, akashv1.InventoryClusterStorage{
 							Class: class,
 							ResourcePair: akashv1.ResourcePair{

@@ -1,0 +1,28 @@
+name: Release
+on:
+  push:
+    tags:
+      - v*
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+      - name: Gen changelog
+        run: |
+          make changelong
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v2
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --rm-dist --release-footer=/go/src/$(GO_MOD_NAME)/.github/release-footer.gotmpl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -22,7 +22,7 @@ archives:
 dockers:
   - ids:
       - inventory-linux-amd64
-    dockerfile: Dockefile
+    dockerfile: Dockerfile
     goos: linux
     goarch: amd64
     image_templates:

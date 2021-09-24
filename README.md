@@ -17,6 +17,9 @@ Reported metrics
 | Provisioner | Status |
 |---|:---:|
 |Rook+Ceph|✅|
+|rancher local|✅|
+
+> **_NOTE:_**  The inventory on rancher local work with single node cluster for now.
 
 Provider talks with service endpoint via K8S API
 ```go
