@@ -200,7 +200,6 @@ func main() {
 	app.Action = func(c *cli.Context) error {
 		bus := PubSubFromCtx(c.Context)
 		kc := KubeClientFromCtx(c.Context)
-		ac := AkashClientFromCtx(c.Context)
 		group := ErrGroupFromCtx(c.Context)
 
 		var storage []Storage
@@ -208,7 +207,11 @@ func main() {
 		if err != nil {
 			return err
 		}
+		storage = append(storage, st)
 
+		if st, err = NewRancher(c.Context); err != nil {
+			return err
+		}
 		storage = append(storage, st)
 
 		ContextSet(c, CtxKeyStorage, storage)
@@ -231,7 +234,7 @@ func main() {
 
 		group.Go(func() error {
 			select {
-			case <- ctx.Done():
+			case <-ctx.Done():
 			}
 			return srv.Shutdown(ctx)
 		})
@@ -244,13 +247,17 @@ func main() {
 		WatchKubeObjects(c.Context,
 			bus,
 			kc.StorageV1().StorageClasses(),
-			"sc",
-			WatchWithListOptions(metav1.ListOptions{LabelSelector: "akash.network=true"}))
+			"sc")
 
 		WatchKubeObjects(c.Context,
 			bus,
-			ac.AkashV1().InventoryRequests(),
-			"invreq")
+			kc.CoreV1().PersistentVolumes(),
+			"pv")
+
+		WatchKubeObjects(c.Context,
+			bus,
+			kc.CoreV1().Nodes(),
+			"nodes")
 
 		return group.Wait()
 	}

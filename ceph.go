@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
-	"github.com/cskr/pubsub"
 	akashv1 "github.com/ovrclk/akash/pkg/apis/akash.network/v1"
 	"github.com/ovrclk/akash/util/runner"
 	rookv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
-	rookclientset "github.com/rook/rook/pkg/client/clientset/versioned"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/watch"
@@ -56,15 +55,15 @@ type dfResp struct {
 
 type cephClusters map[string]string
 
-type storageClass struct {
+type cephStorageClass struct {
 	pool      string
 	clusterID string
 }
 
-type storageClasses map[string]storageClass
+type cephStorageClasses map[string]cephStorageClass
 
-func (sc storageClasses) dup() storageClasses {
-	res := make(storageClasses, len(sc))
+func (sc cephStorageClasses) dup() cephStorageClasses {
+	res := make(cephStorageClasses, len(sc))
 
 	for class, params := range sc {
 		res[class] = params
@@ -93,9 +92,7 @@ type req struct {
 }
 
 type ceph struct {
-	pubsub *pubsub.PubSub
 	exe    RemotePodCommandExecutor
-	rc     *rookclientset.Clientset
 	ctx    context.Context
 	cancel context.CancelFunc
 	reqch  chan req
@@ -106,8 +103,6 @@ func NewCeph(ctx context.Context) (Storage, error) {
 
 	c := &ceph{
 		exe:    NewRemotePodCommandExecutor(KubeConfigFromCtx(ctx), KubeClientFromCtx(ctx)),
-		rc:     RookClientFromCtx(ctx),
-		pubsub: PubSubFromCtx(ctx),
 		ctx:    ctx,
 		cancel: cancel,
 		reqch:  make(chan req, 100),
@@ -134,13 +129,17 @@ func (c *ceph) Query() ([]akashv1.InventoryClusterStorage, error) {
 func (c *ceph) run() error {
 	events := make(chan interface{}, 1000)
 
-	defer c.pubsub.Unsub(events)
-	c.pubsub.AddSub(events, "ns", "sc")
+	pubsub := PubSubFromCtx(c.ctx)
+
+	defer pubsub.Unsub(events)
+	pubsub.AddSub(events, "ns", "sc")
+
+	rc := RookClientFromCtx(c.ctx)
 
 	log := LogFromCtx(c.ctx).WithName("rook-ceph")
 
 	clusters := make(cephClusters)
-	scs := make(storageClasses)
+	scs := make(cephStorageClasses)
 
 	var pendingReq []req
 
@@ -153,7 +152,11 @@ func (c *ceph) run() error {
 		case rawEvt := <-events:
 			switch evt := rawEvt.(type) {
 			case watch.Event:
-				msg := fmt.Sprintf("%8s monitoring %s", evt.Type, evt.Object.GetObjectKind().GroupVersionKind().Kind)
+				kind := reflect.TypeOf(evt.Object).String()
+				if idx := strings.LastIndex(kind, "."); idx > 0 {
+					kind = kind[idx+1:]
+				}
+				msg := fmt.Sprintf("%8s monitoring %s", evt.Type, kind)
 
 			evtdone:
 				switch obj := evt.Object.(type) {
@@ -163,10 +166,10 @@ func (c *ceph) run() error {
 					case watch.Added:
 						fallthrough
 					case watch.Modified:
-						WatchKubeObjects(c.ctx, c.pubsub, c.rc.CephV1().CephClusters(obj.Name), topic)
-						c.pubsub.AddSub(events, topic)
+						WatchKubeObjects(c.ctx, pubsub, rc.CephV1().CephClusters(obj.Name), topic)
+						pubsub.AddSub(events, topic)
 					case watch.Deleted:
-						c.pubsub.Unsub(events, "ns/"+obj.Name+"/cephclusters")
+						pubsub.Unsub(events, "ns/"+obj.Name+"/cephclusters")
 					default:
 						break evtdone
 					}
@@ -175,7 +178,6 @@ func (c *ceph) run() error {
 				case *storagev1.StorageClass:
 					// we're not interested in storage classes provisioned by provisioners other than ceph
 					if !strings.HasSuffix(obj.Provisioner, ".csi.ceph.com") {
-						log.Info("ignoring StorageClass", "name", obj.Name)
 						break evtdone
 					}
 
@@ -183,7 +185,7 @@ func (c *ceph) run() error {
 					case watch.Added:
 						fallthrough
 					case watch.Modified:
-						sc := storageClass{}
+						sc := cephStorageClass{}
 
 						var exists bool
 						if sc.pool, exists = obj.Parameters["pool"]; !exists {
@@ -244,7 +246,7 @@ func (c *ceph) run() error {
 	}
 }
 
-func (c *ceph) scrapeMetrics(scs storageClasses, clusters map[string]string) ([]akashv1.InventoryClusterStorage, error) {
+func (c *ceph) scrapeMetrics(scs cephStorageClasses, clusters map[string]string) ([]akashv1.InventoryClusterStorage, error) {
 	var res []akashv1.InventoryClusterStorage
 
 	dfResults := make(map[string]dfResp, len(clusters))

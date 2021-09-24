@@ -27,6 +27,8 @@ rules:
       - nodes
       - pods
       - events
+      - persistentvolumes
+      - persistentvolumeclaims
     verbs:
       - get
       - list
@@ -120,8 +122,9 @@ metadata:
   namespace: akash-services
   labels:
     akash.network: "true"
-    operator: akash
-    storage-backend : ceph
+    app.kubernetes.io/name: akash
+    app.kubernetes.io/instance: inventory
+    app.kubernetes.io/component: operator
 spec:
   selector:
     matchLabels:
