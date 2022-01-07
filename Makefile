@@ -1,4 +1,4 @@
-GORELEASER_VERSION        ?= v0.179.0
+GORELEASER_VERSION        ?= v1.2.5
 GIT_CHGLOG_VERSION        ?= v0.15.0
 
 GORELEASER_IMAGE          := ghcr.io/goreleaser/goreleaser:$(GORELEASER_VERSION)
