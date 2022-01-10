@@ -1,13 +1,14 @@
-GORELEASER_VERSION        ?= v1.2.5
+include .makerc
+
 GIT_CHGLOG_VERSION        ?= v0.15.0
 
-GORELEASER_IMAGE          := ghcr.io/goreleaser/goreleaser:$(GORELEASER_VERSION)
+RELEASER_IMAGE            := ghcr.io/troian/golang-cross:$(GOLANG_VERSION)
 
 GORELEASER_SKIP_VALIDATE  ?= false
 GORELEASER_SNAPSHOT       ?= false
 
 GO_MOD_NAME               ?= $(shell go list)
-GORELEASER_RUN            := docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v `pwd`:/go/src/$(GO_MOD_NAME) -w /go/src/$(GO_MOD_NAME) $(GORELEASER_IMAGE)
+GORELEASER_RUN            := docker run --privileged --rm -v /var/run/docker.sock:/var/run/docker.sock -v `pwd`:/go/src/$(GO_MOD_NAME) -w /go/src/$(GO_MOD_NAME) $(GORELEASER_IMAGE)
 GORELEASER_RELEASE_NOTES  := --release-notes=/go/src/$(GO_MOD_NAME)/.cache/changelog.md
 GORELEASER_RELEASE_FOOTER ?= --release-footer=/go/src/$(GO_MOD_NAME)/.github/release-footer.gotmpl
 CHANGELOG                 := .cache/changelog.md
@@ -55,3 +56,4 @@ release-dry-run: $(CHANGELOG)
 
 .PHONY: release $(CHANGELOG)
 release:
+	$(GORELEASER_RUN) -f .goreleaser.yaml $(GORELEASER_RELEASE_NOTES)
