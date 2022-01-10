@@ -1,4 +1,4 @@
-module github.com/ovrclk/k8s_inventory_operator
+module github.com/ovrclk/k8s-inventory-operator
 
 go 1.17
 
