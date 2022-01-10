@@ -323,6 +323,8 @@ func loadKubeConfig(c *cli.Context) error {
 		return err
 	}
 
+	log.Info("kube config loaded successfully")
+
 	ContextSet(c, CtxKeyKubeConfig, config)
 
 	return nil
