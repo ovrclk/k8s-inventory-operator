@@ -22,6 +22,10 @@ jobs:
       - uses: actions/setup-go@v2
         with:
           go-version: "${{ env.GOLANG_VERSION }}"
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
       - name: go mod tidy
         run: |
           go mod tidy
@@ -30,11 +34,21 @@ jobs:
           make changelog
         env:
           GORELEASER_TAG: "${{ env.RELEASE_VERSION }}"
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v2
-        with:
-          distribution: goreleaser
-          version: latest
-          args: release --rm-dist --release-footer=.github/release-footer.gotmpl
+      - if: startsWith(github.ref,'refs/tags/v')
+        name: release dry-run
+        run: make release-dry-run
         env:
-          GITHUB_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GORELEASER_TAG: "${{ env.RELEASE_VERSION }}"
+      - if: startsWith(github.ref,'refs/tags/v')
+        name: setup release environment
+        run: |-
+          echo '${{secrets.GHCR_USER}}:${{secrets.GHCR_TOKEN}}:ghcr.io' > .docker-creds
+          echo 'DOCKER_CREDS_FILE=.docker-creds'                    > .release-env
+          echo 'GITHUB_TOKEN=${{secrets.GORELEASER_ACCESS_TOKEN}}' >> .release-env
+      - if: startsWith(github.ref,'refs/tags/v')
+        name: release publish
+        run: |-
+          sudo rm -rf dist
+          make release
+        env:
+          GORELEASER_TAG: "${{ env.RELEASE_VERSION }}"
