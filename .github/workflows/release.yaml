@@ -52,3 +52,4 @@ jobs:
           make release
         env:
           GORELEASER_TAG: "${{ env.RELEASE_VERSION }}"
+          GITHUB_TOKEN: "${{ secrets.GHCR_TOKEN }}"
