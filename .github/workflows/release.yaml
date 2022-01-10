@@ -32,7 +32,7 @@ jobs:
           registry: ghcr.io
           username: ${{ secrets.GHCR_TOKEN }}
           password: ${{ secrets.GHCR_TOKEN }}
-      - name: go mod tidy
+      - name: Go mod tidy
         run: |
           go mod tidy
       - name: Gen changelog
@@ -41,7 +41,7 @@ jobs:
         env:
           GORELEASER_TAG: "${{ env.RELEASE_VERSION }}"
       - if: startsWith(github.ref,'refs/tags/v')
-        name: release dry-run
+        name: Release dry-run
         uses: goreleaser/goreleaser-action@v2
         with:
           distribution: goreleaser
@@ -50,7 +50,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GHCR_TOKEN }}
       - if: startsWith(github.ref,'refs/tags/v')
-        name: release
+        name: Release
         uses: goreleaser/goreleaser-action@v2
         with:
           distribution: goreleaser
