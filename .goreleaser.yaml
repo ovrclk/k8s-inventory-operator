@@ -56,11 +56,11 @@ docker_manifests:
     image_templates:
       - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-amd64
       - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-arm64v8
-  - name_template: ghcr.io/caarlos0/{{ .ProjectName }}:latest
+  - name_template: ghcr.io/ovrclk/{{ .ProjectName }}:latest
     image_templates:
       - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-amd64
       - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-arm64v8
-  - name_template: ghcr.io/caarlos0/{{ .ProjectName }}:{{ .ShortCommit }}
+  - name_template: ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}
     image_templates:
       - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}-amd64
       - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}-arm64v8
