@@ -35,6 +35,7 @@ dockers:
     image_templates:
       - 'ghcr.io/ovrclk/k8s_inventory_operator:{{ .ShortCommit }}-amd64'
       - 'ghcr.io/ovrclk/k8s_inventory_operator:{{ .Version }}-amd64'
+      - 'ghcr.io/ovrclk/k8s_inventory_operator:latest-amd64'
   - dockerfile: Dockerfile
     use: buildx
     goos: linux
@@ -51,19 +52,20 @@ dockers:
     image_templates:
       - 'ghcr.io/ovrclk/k8s_inventory_operator:{{ .ShortCommit }}-arm64v8'
       - 'ghcr.io/ovrclk/k8s_inventory_operator:{{ .Version }}-arm64v8'
+      - 'ghcr.io/ovrclk/k8s_inventory_operator:latest-arm64v8'
 docker_manifests:
+  - name_template: ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}
+    image_templates:
+      - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}-amd64
+      - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}-arm64v8
   - name_template: ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}
     image_templates:
       - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-amd64
       - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-arm64v8
   - name_template: ghcr.io/ovrclk/{{ .ProjectName }}:latest
     image_templates:
-      - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-amd64
-      - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-arm64v8
-  - name_template: ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}
-    image_templates:
-      - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}-amd64
-      - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}-arm64v8
+      - ghcr.io/ovrclk/{{ .ProjectName }}:latest-amd64
+      - ghcr.io/ovrclk/{{ .ProjectName }}:latest-arm64v8
 release:
   github:
     owner: ovrclk
