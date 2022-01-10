@@ -66,9 +66,3 @@ docker_manifests:
     image_templates:
       - ghcr.io/ovrclk/{{ .ProjectName }}:latest-amd64
       - ghcr.io/ovrclk/{{ .ProjectName }}:latest-arm64v8
-release:
-  github:
-    owner: ovrclk
-    name: k8s_inventory_operator
-  prerelease: auto
-  draft: false
