@@ -8,7 +8,7 @@ GORELEASER_SKIP_VALIDATE  ?= false
 GORELEASER_SNAPSHOT       ?= false
 
 GO_MOD_NAME               ?= $(shell go list)
-GORELEASER_RUN            := docker run --privileged --rm -v /var/run/docker.sock:/var/run/docker.sock -e GITHUB_TOKEN="$(GITHUB_TOKEN)" -v `pwd`:/go/src/$(GO_MOD_NAME) -w /go/src/$(GO_MOD_NAME) $(RELEASER_IMAGE)
+GORELEASER_RUN            := docker run --privileged --rm -v /var/run/docker.sock:/var/run/docker.sock -v `pwd`:/go/src/$(GO_MOD_NAME) -w /go/src/$(GO_MOD_NAME)
 GORELEASER_RELEASE_NOTES  := --release-notes=/go/src/$(GO_MOD_NAME)/.cache/changelog.md
 GORELEASER_RELEASE_FOOTER ?= --release-footer=/go/src/$(GO_MOD_NAME)/.github/release-footer.gotmpl
 CHANGELOG                 := .cache/changelog.md
@@ -47,7 +47,7 @@ changelog: $(CHANGELOG)
 
 .PHONY: release-dry-run
 release-dry-run: $(CHANGELOG)
-	$(GORELEASER_RUN) -f .goreleaser.yaml \
+	$(GORELEASER_RUN) $(RELEASER_IMAGE) -f .goreleaser.yaml \
 		--rm-dist \
 		--skip-publish \
 		--skip-validate=$(GORELEASER_SKIP_VALIDATE) \
@@ -56,4 +56,7 @@ release-dry-run: $(CHANGELOG)
 
 .PHONY: release
 release: $(CHANGELOG)
-	$(GORELEASER_RUN) -f .goreleaser.yaml release $(GORELEASER_RELEASE_NOTES) --rm-dist
+	$(GORELEASER_RUN) \
+		--env-file .release-env \
+		$(RELEASER_IMAGE) \
+		-f .goreleaser.yaml release $(GORELEASER_RELEASE_NOTES) --rm-dist
