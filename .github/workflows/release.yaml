@@ -46,9 +46,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GHCR_TOKEN }}
       - if: startsWith(github.ref,'refs/tags/v')
+        name: setup release environment
+        run: |-
+          echo '${{secrets.GHCR_USER}}:${{secrets.GHCR_TOKEN}}:ghcr.io' > .docker-creds
+          echo 'DOCKER_CREDS_FILE=.docker-creds' > .release-env
+          echo 'GITHUB_TOKEN=${{secrets.GITHUB_TOKEN}}' >> .release-env
+      - if: startsWith(github.ref,'refs/tags/v')
         name: Release
         run: |-
           sudo rm -rf dist
           make release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
