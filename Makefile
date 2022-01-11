@@ -2,7 +2,7 @@ include .makerc
 
 GIT_CHGLOG_VERSION        ?= v0.15.0
 
-RELEASER_IMAGE            := ghcr.io/troian/golang-cross-base:v$(GO_VERSION)
+RELEASER_IMAGE            := ghcr.io/troian/golang-cross-base:v$(GOLANG_VERSION)
 
 GORELEASER_SKIP_VALIDATE  ?= false
 GORELEASER_SNAPSHOT       ?= false
