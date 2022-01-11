@@ -12,6 +12,8 @@ builds:
     flags:
       - -trimpath
       - -mod=readonly
+    ldflags:
+      - -s -w
 archives:
   - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 dockers:
@@ -21,7 +23,7 @@ dockers:
     goos: linux
     build_flag_templates:
       - --pull
-      - --platform=linux/amd64
+      - --platform=linux/x86_64
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description={{ .ProjectName }}
       - --label=org.opencontainers.image.url={{.GitURL}}
