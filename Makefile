@@ -56,4 +56,4 @@ release-dry-run: $(CHANGELOG)
 
 .PHONY: release
 release: $(CHANGELOG)
-	$(GORELEASER_RUN) -f .goreleaser.yaml release $(GORELEASER_RELEASE_NOTES)
+	$(GORELEASER_RUN) -f .goreleaser.yaml release $(GORELEASER_RELEASE_NOTES) --rm-dist
