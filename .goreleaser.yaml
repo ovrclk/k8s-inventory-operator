@@ -22,7 +22,6 @@ dockers:
     goarch: amd64
     goos: linux
     build_flag_templates:
-      - --pull
       - --platform=linux/amd64
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description={{ .ProjectName }}
@@ -40,7 +39,6 @@ dockers:
     goarch: arm64
     goos: linux
     build_flag_templates:
-      - --pull
       - --platform=linux/arm64
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description={{ .ProjectName }}

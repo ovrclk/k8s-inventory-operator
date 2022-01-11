@@ -1,6 +1,5 @@
-LABEL org.opencontainers.image.source https://github.com/ovrclk/k8s-inventory-operator
-
 FROM alpine
+LABEL "org.opencontainers.image.source"="https://github.com/ovrclk/k8s-inventory-operator"
 
 COPY inventory /bin/
 
