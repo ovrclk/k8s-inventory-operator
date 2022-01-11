@@ -1,5 +1,6 @@
 env:
   - GO111MODULE=on
+  - DOCKER_CLI_EXPERIMENTAL="enabled"
 builds:
   - binary: inventory
     main: ./
@@ -12,23 +13,19 @@ builds:
       - -trimpath
       - -mod=readonly
 archives:
-  - id: inventory
-    builds:
-      - inventory-linux-amd64
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    wrap_in_directory: true
-    format: zip
+  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 dockers:
   - dockerfile: Dockerfile
     use: buildx
-    goos: linux
     goarch: amd64
+    goos: linux
     build_flag_templates:
+      - --pull
       - --platform=linux/amd64
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://github.com/ovrclk/{{ .ProjectName }}
-      - --label=org.opencontainers.image.source=https://github.com/ovrclk/{{ .ProjectName }}
+      - --label=org.opencontainers.image.url={{.GitURL}}
+      - --label=org.opencontainers.image.source={{.GitURL}}
       - --label=org.opencontainers.image.version={{ .Version }}
       - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
       - --label=org.opencontainers.image.revision={{ .FullCommit }}
@@ -38,31 +35,32 @@ dockers:
       - 'ghcr.io/ovrclk/{{ .ProjectName }}:latest-amd64'
   - dockerfile: Dockerfile
     use: buildx
-    goos: linux
     goarch: arm64
+    goos: linux
     build_flag_templates:
+      - --pull
       - --platform=linux/arm64
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://github.com/ovrclk/{{ .ProjectName }}
-      - --label=org.opencontainers.image.source=https://github.com/ovrclk/{{ .ProjectName }}
+      - --label=org.opencontainers.image.url={{.GitURL}}
+      - --label=org.opencontainers.image.source={{.GitURL}}
       - --label=org.opencontainers.image.version={{ .Version }}
       - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
       - --label=org.opencontainers.image.revision={{ .FullCommit }}
     image_templates:
-      - 'ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}-arm64v8'
-      - 'ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-arm64v8'
-      - 'ghcr.io/ovrclk/{{ .ProjectName }}:latest-arm64v8'
+      - 'ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}-arm64'
+      - 'ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-arm64'
+      - 'ghcr.io/ovrclk/{{ .ProjectName }}:latest-arm64'
 docker_manifests:
   - name_template: ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}
     image_templates:
       - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}-amd64
-      - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}-arm64v8
+      - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .ShortCommit }}-arm64
   - name_template: ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}
     image_templates:
       - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-amd64
-      - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-arm64v8
+      - ghcr.io/ovrclk/{{ .ProjectName }}:{{ .Version }}-arm64
   - name_template: ghcr.io/ovrclk/{{ .ProjectName }}:latest
     image_templates:
       - ghcr.io/ovrclk/{{ .ProjectName }}:latest-amd64
-      - ghcr.io/ovrclk/{{ .ProjectName }}:latest-arm64v8
+      - ghcr.io/ovrclk/{{ .ProjectName }}:latest-arm64
