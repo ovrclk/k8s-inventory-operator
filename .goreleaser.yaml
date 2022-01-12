@@ -64,3 +64,5 @@ docker_manifests:
     image_templates:
       - ghcr.io/ovrclk/{{ .ProjectName }}:latest-amd64
       - ghcr.io/ovrclk/{{ .ProjectName }}:latest-arm64
+release:
+  prerelease: auto
