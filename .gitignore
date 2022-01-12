@@ -2,3 +2,5 @@ dist
 vendor
 inventory
 .cache
+.release-env
+.docker-creds
