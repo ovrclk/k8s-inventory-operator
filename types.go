@@ -15,6 +15,44 @@ import (
 	akashv1 "github.com/ovrclk/akash/pkg/apis/akash.network/v1"
 )
 
+type resp struct {
+	res []akashv1.InventoryClusterStorage
+	err error
+}
+
+type req struct {
+	resp chan resp
+}
+
+type querier struct {
+	reqch chan req
+}
+
+func newQuerier() querier {
+	return querier{
+		reqch: make(chan req, 100),
+	}
+}
+
+func (c *querier) Query(ctx context.Context) ([]akashv1.InventoryClusterStorage, error) {
+	r := req{
+		resp: make(chan resp, 1),
+	}
+
+	select {
+	case c.reqch <- r:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	select {
+	case rsp := <-r.resp:
+		return rsp.res, rsp.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 type watchOption struct {
 	listOptions metav1.ListOptions
 }
@@ -28,7 +66,7 @@ func WatchWithListOptions(val metav1.ListOptions) WatchOption {
 }
 
 type Storage interface {
-	Query() ([]akashv1.InventoryClusterStorage, error)
+	Query(ctx context.Context) ([]akashv1.InventoryClusterStorage, error)
 }
 
 type Watcher interface {
@@ -38,6 +76,8 @@ type Watcher interface {
 type RemotePodCommandExecutor interface {
 	ExecWithOptions(options rookexec.ExecOptions) (string, string, error)
 	ExecCommandInContainerWithFullOutput(appLabel, containerName, namespace string, cmd ...string) (string, string, error)
+	// ExecCommandInContainerWithFullOutputWithTimeout uses 15s hard-coded timeout
+	ExecCommandInContainerWithFullOutputWithTimeout(appLabel, containerName, namespace string, cmd ...string) (string, string, error)
 }
 
 func NewRemotePodCommandExecutor(restcfg *rest.Config, clientset *kubernetes.Clientset) RemotePodCommandExecutor {

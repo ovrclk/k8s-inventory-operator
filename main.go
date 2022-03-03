@@ -23,8 +23,6 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -38,6 +36,8 @@ import (
 const (
 	FlagKubeConfig    = "kubeconfig"
 	FlagKubeInCluster = "kube-incluster"
+	FlagApiTimeout    = "api-timeout"
+	FlagQueryTimeout  = "query-timeout"
 )
 
 type ContextKey string
@@ -165,6 +165,20 @@ func main() {
 		&cli.BoolFlag{
 			Name: FlagKubeInCluster,
 		},
+		&cli.DurationFlag{
+			Name:     FlagApiTimeout,
+			EnvVars:  []string{strings.ToUpper(FlagApiTimeout)},
+			Required: false,
+			Hidden:   false,
+			Value:    3 * time.Second,
+		},
+		&cli.DurationFlag{
+			Name:     FlagQueryTimeout,
+			EnvVars:  []string{strings.ToUpper(FlagQueryTimeout)},
+			Required: false,
+			Hidden:   false,
+			Value:    2 * time.Second,
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
@@ -173,17 +187,19 @@ func main() {
 			return err
 		}
 
-		clientset, err := kubernetes.NewForConfig(KubeConfigFromCtx(c.Context))
+		kubecfg := KubeConfigFromCtx(c.Context)
+
+		clientset, err := kubernetes.NewForConfig(kubecfg)
 		if err != nil {
 			return err
 		}
 
-		rc, err := rookclientset.NewForConfig(KubeConfigFromCtx(c.Context))
+		rc, err := rookclientset.NewForConfig(kubecfg)
 		if err != nil {
 			return err
 		}
 
-		ac, err := akashclientset.NewForConfig(KubeConfigFromCtx(c.Context))
+		ac, err := akashclientset.NewForConfig(kubecfg)
 
 		group, ctx := errgroup.WithContext(c.Context)
 		c.Context = ctx
@@ -216,13 +232,9 @@ func main() {
 
 		ContextSet(c, CtxKeyStorage, storage)
 
-		group.Go(func() error {
-			return reqListener(c)
-		})
-
 		srv := &http.Server{
 			Addr:    ":8080",
-			Handler: newRouter(),
+			Handler: newRouter(LogFromCtx(c.Context).WithName("router"), c.Duration(FlagApiTimeout), c.Duration(FlagQueryTimeout)),
 			BaseContext: func(_ net.Listener) context.Context {
 				return c.Context
 			},
@@ -264,8 +276,17 @@ func main() {
 	_ = app.RunContext(ctx, os.Args)
 }
 
-func newRouter() *mux.Router {
+func newRouter(log logr.Logger, apiTimeout, queryTimeout time.Duration) *mux.Router {
 	router := mux.NewRouter()
+
+	router.Use(func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rCtx, cancel := context.WithTimeout(r.Context(), apiTimeout)
+			defer cancel()
+
+			h.ServeHTTP(w, r.WithContext(rCtx))
+		})
+	})
 
 	router.HandleFunc("/inventory", func(w http.ResponseWriter, req *http.Request) {
 		storage := StorageFromCtx(req.Context())
@@ -274,6 +295,9 @@ func newRouter() *mux.Router {
 				Kind:       "Inventory",
 				APIVersion: "akash.network/v1",
 			},
+			ObjectMeta: metav1.ObjectMeta{
+				CreationTimestamp: metav1.NewTime(time.Now().UTC()),
+			},
 			Spec: akashv1.InventorySpec{},
 			Status: akashv1.InventoryStatus{
 				State: akashv1.InventoryStatePulled,
@@ -281,10 +305,14 @@ func newRouter() *mux.Router {
 		}
 
 		for _, st := range storage {
-			res, err := st.Query()
-			if err != nil {
+			ctx, cancel := context.WithTimeout(req.Context(), queryTimeout)
+			res, err := st.Query(ctx)
+			if err != nil && !errors.Is(err, context.Canceled) {
 				inv.Status.Messages = append(inv.Status.Messages, err.Error())
+				log.Error(err, "query failed")
 			}
+
+			cancel()
 
 			inv.Spec.Storage = append(inv.Spec.Storage, res...)
 		}
@@ -328,56 +356,4 @@ func loadKubeConfig(c *cli.Context) error {
 	ContextSet(c, CtxKeyKubeConfig, config)
 
 	return nil
-}
-
-func reqListener(c *cli.Context) error {
-	bus := PubSubFromCtx(c.Context)
-	evtch := bus.Sub("invreq")
-
-	group := ErrGroupFromCtx(c.Context)
-
-	storage := StorageFromCtx(c.Context)
-	ac := AkashClientFromCtx(c.Context)
-
-	log := LogFromCtx(c.Context).WithName("req-handler")
-	for {
-		select {
-		case <-c.Context.Done():
-			return c.Context.Err()
-		case rawEvt := <-evtch:
-			switch evt := rawEvt.(type) {
-			case watch.Event:
-				switch obj := evt.Object.(type) {
-				case *akashv1.InventoryRequest:
-					group.Go(func() error {
-						inv := akashv1.Inventory{
-							TypeMeta: metav1.TypeMeta{
-								APIVersion: "akash.network/v1",
-								Kind:       "Inventory",
-							},
-							ObjectMeta: metav1.ObjectMeta{
-								Name: obj.Name,
-							},
-						}
-						for _, st := range storage {
-							res, _ := st.Query()
-							inv.Spec.Storage = append(inv.Spec.Storage, res...)
-						}
-
-						payload, _ := json.Marshal(&inv)
-
-						_, err := ac.AkashV1().
-							Inventories().
-							Patch(c.Context, obj.Name, types.ApplyPatchType, payload, metav1.ApplyOptions{Force: true, FieldManager: os.Args[0]}.ToPatchOptions())
-
-						if err != nil {
-							log.Error(err, "")
-						}
-
-						return nil
-					})
-				}
-			}
-		}
-	}
 }

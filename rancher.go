@@ -20,7 +20,7 @@ type rancher struct {
 	exe    RemotePodCommandExecutor
 	ctx    context.Context
 	cancel context.CancelFunc
-	reqch  chan req
+	querier
 }
 
 type rancherStorage struct {
@@ -28,34 +28,23 @@ type rancherStorage struct {
 	isAkashManaged bool
 	allocated      uint64
 }
+
 type rancherStorageClasses map[string]*rancherStorage
 
 func NewRancher(ctx context.Context) (Storage, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	r := &rancher{
-		exe:    NewRemotePodCommandExecutor(KubeConfigFromCtx(ctx), KubeClientFromCtx(ctx)),
-		ctx:    ctx,
-		cancel: cancel,
-		reqch:  make(chan req, 100),
+		exe:     NewRemotePodCommandExecutor(KubeConfigFromCtx(ctx), KubeClientFromCtx(ctx)),
+		ctx:     ctx,
+		cancel:  cancel,
+		querier: newQuerier(),
 	}
 
 	group := ErrGroupFromCtx(ctx)
 	group.Go(r.run)
 
 	return r, nil
-}
-
-func (c *rancher) Query() ([]akashv1.InventoryClusterStorage, error) {
-	r := req{
-		resp: make(chan resp, 1),
-	}
-
-	c.reqch <- r
-
-	rsp := <-r.resp
-
-	return rsp.res, rsp.err
 }
 
 func (c *rancher) run() error {

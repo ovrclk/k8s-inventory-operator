@@ -84,48 +84,27 @@ func (cc cephClusters) dup() cephClusters {
 	return res
 }
 
-type resp struct {
-	res []akashv1.InventoryClusterStorage
-	err error
-}
-
-type req struct {
-	resp chan resp
-}
-
 type ceph struct {
 	exe    RemotePodCommandExecutor
 	ctx    context.Context
 	cancel context.CancelFunc
-	reqch  chan req
+	querier
 }
 
 func NewCeph(ctx context.Context) (Storage, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	c := &ceph{
-		exe:    NewRemotePodCommandExecutor(KubeConfigFromCtx(ctx), KubeClientFromCtx(ctx)),
-		ctx:    ctx,
-		cancel: cancel,
-		reqch:  make(chan req, 100),
+		exe:     NewRemotePodCommandExecutor(KubeConfigFromCtx(ctx), KubeClientFromCtx(ctx)),
+		ctx:     ctx,
+		cancel:  cancel,
+		querier: newQuerier(),
 	}
 
 	group := ErrGroupFromCtx(ctx)
 	group.Go(c.run)
 
 	return c, nil
-}
-
-func (c *ceph) Query() ([]akashv1.InventoryClusterStorage, error) {
-	r := req{
-		resp: make(chan resp, 1),
-	}
-
-	c.reqch <- r
-
-	rsp := <-r.resp
-
-	return rsp.res, rsp.err
 }
 
 func (c *ceph) run() error {
@@ -154,6 +133,11 @@ func (c *ceph) run() error {
 		case rawEvt := <-events:
 			switch evt := rawEvt.(type) {
 			case watch.Event:
+				if evt.Object == nil {
+					log.Info("received nil event object", "event", evt.Type)
+					break
+				}
+
 				kind := reflect.TypeOf(evt.Object).String()
 				if idx := strings.LastIndex(kind, "."); idx > 0 {
 					kind = kind[idx+1:]
@@ -261,7 +245,7 @@ func (c *ceph) scrapeMetrics(scs cephStorageClasses, clusters map[string]string)
 	dfResults := make(map[string]dfResp, len(clusters))
 
 	for clusterID, ns := range clusters {
-		stdout, _, err := c.exe.ExecCommandInContainerWithFullOutput("rook-ceph-tools", "rook-ceph-tools", ns, "ceph", "df", "--format", "json")
+		stdout, _, err := c.exe.ExecCommandInContainerWithFullOutputWithTimeout("rook-ceph-tools", "rook-ceph-tools", ns, "ceph", "df", "--format", "json")
 		if err != nil {
 			return nil, err
 		}
