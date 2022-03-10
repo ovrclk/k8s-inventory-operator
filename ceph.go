@@ -10,10 +10,15 @@ import (
 
 	akashv1 "github.com/ovrclk/akash/pkg/apis/akash.network/v1"
 	"github.com/ovrclk/akash/util/runner"
+	"github.com/pkg/errors"
 	rookv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/watch"
+)
+
+var (
+	cephInventoryInProgress = errors.New("ceph inventory is being updated")
 )
 
 type stats struct {
@@ -122,9 +127,16 @@ func (c *ceph) run() error {
 	clusters := make(cephClusters)
 	scs := make(cephStorageClasses)
 
-	var pendingReq []req
+	scrapeData := resp{
+		res: nil,
+		err: cephInventoryInProgress,
+	}
 
 	var scrapech <-chan runner.Result
+
+	scrapech = runner.Do(func() runner.Result {
+		return runner.NewResult(c.scrapeMetrics(scs.dup(), clusters.dup()))
+	})
 
 	for {
 		select {
@@ -218,23 +230,23 @@ func (c *ceph) run() error {
 				}
 			}
 		case req := <-c.reqch:
-			pendingReq = append(pendingReq, req)
-			if scrapech == nil {
-				scrapech = runner.Do(func() runner.Result {
-					return runner.NewResult(c.scrapeMetrics(scs.dup(), clusters.dup()))
-				})
-			}
+			req.resp <- scrapeData
 		case res := <-scrapech:
-			scrapech = nil
-
-			for _, r := range pendingReq {
-				r.resp <- resp{
-					res: res.Value().([]akashv1.InventoryClusterStorage),
-					err: res.Error(),
-				}
+			r := resp{}
+			if err := res.Error(); err != nil {
+				r.err = cephInventoryInProgress
+				log.Error(err, "unable to pull ceph status")
 			}
 
-			pendingReq = []req{}
+			if data, valid := res.Value().([]akashv1.InventoryClusterStorage); valid {
+				r.res = data
+			}
+
+			scrapeData = r
+
+			scrapech = runner.Do(func() runner.Result {
+				return runner.NewResult(c.scrapeMetrics(scs.dup(), clusters.dup()))
+			})
 		}
 	}
 }

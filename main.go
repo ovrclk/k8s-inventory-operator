@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cskr/pubsub"
@@ -27,6 +28,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
+
+	"github.com/ovrclk/k8s-inventory-operator/util/runner"
 
 	"github.com/boz/go-lifecycle"
 	akashclientset "github.com/ovrclk/akash/pkg/client/clientset/versioned"
@@ -304,17 +307,39 @@ func newRouter(log logr.Logger, apiTimeout, queryTimeout time.Duration) *mux.Rou
 			},
 		}
 
-		for _, st := range storage {
-			ctx, cancel := context.WithTimeout(req.Context(), queryTimeout)
-			res, err := st.Query(ctx)
-			if err != nil && !errors.Is(err, context.Canceled) {
-				inv.Status.Messages = append(inv.Status.Messages, err.Error())
-				log.Error(err, "query failed")
+		ctx, cancel := context.WithTimeout(req.Context(), 100*time.Second)
+		datach := make(chan runner.Result, 1)
+		var wg sync.WaitGroup
+
+		wg.Add(len(storage))
+
+		for idx := range storage {
+			go func(idx int) {
+				defer wg.Done()
+
+				datach <- runner.NewResult(storage[idx].Query(ctx))
+			}(idx)
+		}
+
+		go func() {
+			defer cancel()
+			wg.Wait()
+		}()
+
+	done:
+		for {
+			select {
+			case <-ctx.Done():
+				break done
+			case res := <-datach:
+				if res.Error() != nil {
+					inv.Status.Messages = append(inv.Status.Messages, res.Error().Error())
+				}
+
+				if inventory, valid := res.Value().([]akashv1.InventoryClusterStorage); valid {
+					inv.Spec.Storage = append(inv.Spec.Storage, inventory...)
+				}
 			}
-
-			cancel()
-
-			inv.Spec.Storage = append(inv.Spec.Storage, res...)
 		}
 
 		data, err := json.Marshal(&inv)
