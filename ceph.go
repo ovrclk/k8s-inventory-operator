@@ -162,12 +162,11 @@ func (c *ceph) run() error {
 					topic := "ns/" + obj.Name + "/cephclusters"
 					switch evt.Type {
 					case watch.Added:
-						fallthrough
-					case watch.Modified:
 						WatchKubeObjects(c.ctx, pubsub, rc.CephV1().CephClusters(obj.Name), topic)
 						pubsub.AddSub(events, topic)
+					case watch.Modified:
 					case watch.Deleted:
-						pubsub.Unsub(events, "ns/"+obj.Name+"/cephclusters")
+						pubsub.Unsub(events, topic)
 					default:
 						break evtdone
 					}

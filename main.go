@@ -276,6 +276,7 @@ func main() {
 
 		return group.Wait()
 	}
+
 	_ = app.RunContext(ctx, os.Args)
 }
 
@@ -307,7 +308,7 @@ func newRouter(log logr.Logger, apiTimeout, queryTimeout time.Duration) *mux.Rou
 			},
 		}
 
-		ctx, cancel := context.WithTimeout(req.Context(), 100*time.Second)
+		ctx, cancel := context.WithTimeout(req.Context(), queryTimeout)
 		datach := make(chan runner.Result, 1)
 		var wg sync.WaitGroup
 
