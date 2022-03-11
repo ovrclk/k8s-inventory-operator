@@ -108,13 +108,13 @@ func WatchKubeObjects(ctx context.Context, pubsub *pubsub.PubSub, watcher Watche
 		for {
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return nil
 			case <-tm.C:
 				check <- struct{}{}
 			case <-check:
 				if scWatch, err = watcher.Watch(ctx, opt.listOptions); err != nil {
 					if !k8serr.IsNotFound(err) {
-						return err
+						return nil
 					}
 					tm.Reset(time.Second * 10)
 					continue retry
@@ -126,13 +126,10 @@ func WatchKubeObjects(ctx context.Context, pubsub *pubsub.PubSub, watcher Watche
 
 		defer scWatch.Stop()
 
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case evt := <-scWatch.ResultChan():
-				pubsub.Pub(evt, topic)
-			}
+		for evt := range scWatch.ResultChan() {
+			pubsub.Pub(evt, topic)
 		}
+
+		return nil
 	})
 }
