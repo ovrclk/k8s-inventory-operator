@@ -12,7 +12,7 @@ import (
 	"github.com/ovrclk/akash/util/runner"
 	"github.com/pkg/errors"
 	rookv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
-	corev1 "k8s.io/api/core/v1"
+	rookifactory "github.com/rook/rook/pkg/client/informers/externalversions"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/watch"
 )
@@ -138,6 +138,15 @@ func (c *ceph) run() error {
 		return runner.NewResult(c.scrapeMetrics(scs.dup(), clusters.dup()))
 	})
 
+	cephClustersTopic := "cephclusters"
+
+	pubsub.AddSub(events, cephClustersTopic)
+	factory := rookifactory.NewSharedInformerFactory(rc, 0)
+	InformKubeObjects(c.ctx,
+		pubsub,
+		factory.Ceph().V1().CephClusters().Informer(),
+		cephClustersTopic)
+
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -158,20 +167,6 @@ func (c *ceph) run() error {
 
 			evtdone:
 				switch obj := evt.Object.(type) {
-				case *corev1.Namespace:
-					topic := "ns/" + obj.Name + "/cephclusters"
-					switch evt.Type {
-					case watch.Added:
-						WatchKubeObjects(c.ctx, pubsub, rc.CephV1().CephClusters(obj.Name), topic)
-						pubsub.AddSub(events, topic)
-					case watch.Modified:
-					case watch.Deleted:
-						pubsub.Unsub(events, topic)
-					default:
-						break evtdone
-					}
-
-					log.Info(msg, "name", obj.Name)
 				case *storagev1.StorageClass:
 					// we're not interested in storage classes provisioned by provisioners other than ceph
 					if !strings.HasSuffix(obj.Provisioner, ".csi.ceph.com") {

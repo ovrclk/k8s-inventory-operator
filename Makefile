@@ -2,7 +2,7 @@ include .makerc
 
 GIT_CHGLOG_VERSION        ?= v0.15.0
 
-RELEASER_IMAGE            := ghcr.io/troian/golang-cross-base:v$(GOLANG_VERSION)
+RELEASER_IMAGE            := ghcr.io/goreleaser/goreleaser-cross-base:v$(GOLANG_VERSION)
 
 GORELEASER_SKIP_VALIDATE  ?= false
 GORELEASER_SNAPSHOT       ?= false
@@ -60,3 +60,14 @@ release: $(CHANGELOG)
 		--env-file .release-env \
 		$(RELEASER_IMAGE) \
 		-f .goreleaser.yaml release $(GORELEASER_RELEASE_NOTES) --rm-dist
+
+.PHONY: bins
+bins: $(INVENTORY)
+
+.PHONY: $(INVENTORY)
+$(INVENTORY):
+	GOOS=linux GOARCH=amd64 go build -o inventory
+
+.PHONY: docker
+docker: bins
+	docker build --platform=linux/amd64 . -t ghcr.io/ovrclk/k8s-inventory-operator

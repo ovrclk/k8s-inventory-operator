@@ -5,14 +5,15 @@ import (
 	"time"
 
 	"github.com/cskr/pubsub"
+	akashv1 "github.com/ovrclk/akash/pkg/apis/akash.network/v1"
 	rookexec "github.com/rook/rook/pkg/util/exec"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-
-	akashv1 "github.com/ovrclk/akash/pkg/apis/akash.network/v1"
+	"k8s.io/client-go/tools/cache"
 )
 
 type resp struct {
@@ -130,6 +131,34 @@ func WatchKubeObjects(ctx context.Context, pubsub *pubsub.PubSub, watcher Watche
 			pubsub.Pub(evt, topic)
 		}
 
+		return nil
+	})
+}
+
+func InformKubeObjects(ctx context.Context, pubsub *pubsub.PubSub, informer cache.SharedIndexInformer, topic string) {
+	ErrGroupFromCtx(ctx).Go(func() error {
+		informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				pubsub.Pub(watch.Event{
+					Type:   watch.Added,
+					Object: obj.(runtime.Object),
+				}, topic)
+			},
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				pubsub.Pub(watch.Event{
+					Type:   watch.Modified,
+					Object: newObj.(runtime.Object),
+				}, topic)
+			},
+			DeleteFunc: func(obj interface{}) {
+				pubsub.Pub(watch.Event{
+					Type:   watch.Deleted,
+					Object: obj.(runtime.Object),
+				}, topic)
+			},
+		})
+
+		informer.Run(ctx.Done())
 		return nil
 	})
 }

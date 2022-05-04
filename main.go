@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -24,6 +25,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -41,19 +43,21 @@ const (
 	FlagKubeInCluster = "kube-incluster"
 	FlagApiTimeout    = "api-timeout"
 	FlagQueryTimeout  = "query-timeout"
+	FlagApiPort       = "api-port"
 )
 
 type ContextKey string
 
 const (
-	CtxKeyKubeConfig     = ContextKey(FlagKubeConfig)
-	CtxKeyKubeClientSet  = ContextKey("kube-clientset")
-	CtxKeyRookClientSet  = ContextKey("rook-clientset")
-	CtxKeyAkashClientSet = ContextKey("akash-clientset")
-	CtxKeyPubSub         = ContextKey("pubsub")
-	CtxKeyLifecycle      = ContextKey("lifecycle")
-	CtxKeyErrGroup       = ContextKey("errgroup")
-	CtxKeyStorage        = ContextKey("storage")
+	CtxKeyKubeConfig       = ContextKey(FlagKubeConfig)
+	CtxKeyKubeClientSet    = ContextKey("kube-clientset")
+	CtxKeyRookClientSet    = ContextKey("rook-clientset")
+	CtxKeyAkashClientSet   = ContextKey("akash-clientset")
+	CtxKeyPubSub           = ContextKey("pubsub")
+	CtxKeyLifecycle        = ContextKey("lifecycle")
+	CtxKeyErrGroup         = ContextKey("errgroup")
+	CtxKeyStorage          = ContextKey("storage")
+	CtxKeyInformersFactory = ContextKey("informers-factory")
 )
 
 func LogFromCtx(ctx context.Context) logr.Logger {
@@ -76,6 +80,15 @@ func KubeClientFromCtx(ctx context.Context) *kubernetes.Clientset {
 	}
 
 	return val.(*kubernetes.Clientset)
+}
+
+func InformersFactoryFromCtx(ctx context.Context) informers.SharedInformerFactory {
+	val := ctx.Value(CtxKeyInformersFactory)
+	if val == nil {
+		panic("context does not have k8s factory set")
+	}
+
+	return val.(informers.SharedInformerFactory)
 }
 
 func RookClientFromCtx(ctx context.Context) *rookclientset.Clientset {
@@ -182,11 +195,21 @@ func main() {
 			Hidden:   false,
 			Value:    2 * time.Second,
 		},
+		&cli.UintFlag{
+			Name:    FlagApiPort,
+			Aliases: nil,
+			Usage:   "rest api port",
+			EnvVars: []string{strings.ToUpper(FlagQueryTimeout)},
+			Value:   8080,
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
-		err := loadKubeConfig(c)
-		if err != nil {
+		if err := validateFlags(c); err != nil {
+			return err
+		}
+
+		if err := loadKubeConfig(c); err != nil {
 			return err
 		}
 
@@ -218,7 +241,7 @@ func main() {
 
 	app.Action = func(c *cli.Context) error {
 		bus := PubSubFromCtx(c.Context)
-		kc := KubeClientFromCtx(c.Context)
+		// kc := KubeClientFromCtx(c.Context)
 		group := ErrGroupFromCtx(c.Context)
 
 		var storage []Storage
@@ -254,30 +277,40 @@ func main() {
 			return srv.Shutdown(ctx)
 		})
 
-		WatchKubeObjects(c.Context,
+		factory := informers.NewSharedInformerFactory(KubeClientFromCtx(c.Context), 0)
+
+		InformKubeObjects(c.Context,
 			bus,
-			kc.CoreV1().Namespaces(),
+			factory.Core().V1().Namespaces().Informer(),
 			"ns")
 
-		WatchKubeObjects(c.Context,
+		InformKubeObjects(c.Context,
 			bus,
-			kc.StorageV1().StorageClasses(),
+			factory.Storage().V1().StorageClasses().Informer(),
 			"sc")
 
-		WatchKubeObjects(c.Context,
+		InformKubeObjects(c.Context,
 			bus,
-			kc.CoreV1().PersistentVolumes(),
+			factory.Core().V1().PersistentVolumes().Informer(),
 			"pv")
 
-		WatchKubeObjects(c.Context,
+		InformKubeObjects(c.Context,
 			bus,
-			kc.CoreV1().Nodes(),
+			factory.Core().V1().Nodes().Informer(),
 			"nodes")
 
 		return group.Wait()
 	}
 
 	_ = app.RunContext(ctx, os.Args)
+}
+
+func validateFlags(c *cli.Context) error {
+	if c.Uint(FlagApiPort) > math.MaxUint16 {
+		return errors.Errorf("invalid value in \"%s\" flag. expected range 0..65535, provided %d", FlagApiPort, c.Uint(FlagApiPort))
+	}
+
+	return nil
 }
 
 func newRouter(log logr.Logger, apiTimeout, queryTimeout time.Duration) *mux.Router {
@@ -308,7 +341,19 @@ func newRouter(log logr.Logger, apiTimeout, queryTimeout time.Duration) *mux.Rou
 			},
 		}
 
+		var data []byte
+
 		ctx, cancel := context.WithTimeout(req.Context(), queryTimeout)
+		defer func() {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				w.WriteHeader(http.StatusRequestTimeout)
+			}
+
+			if len(data) > 0 {
+				_, _ = w.Write(data)
+			}
+		}()
+
 		datach := make(chan runner.Result, 1)
 		var wg sync.WaitGroup
 
@@ -343,15 +388,13 @@ func newRouter(log logr.Logger, apiTimeout, queryTimeout time.Duration) *mux.Rou
 			}
 		}
 
-		data, err := json.Marshal(&inv)
-		if err != nil {
+		var err error
+		if data, err = json.Marshal(&inv); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			data = []byte(err.Error())
 		} else {
 			w.Header().Set("Content-Type", "application/json")
 		}
-
-		_, _ = w.Write(data)
 	})
 
 	return router
